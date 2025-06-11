@@ -6,7 +6,7 @@ const SALESFORCE_USERNAME = 'kevin.heraly@demandscience.com';
 const SALESFORCE_PASSWORD = 'L0v3Chl03#';
 const SALESFORCE_SECURITY_TOKEN = 'g6bCVSLyfHiwRihRJGECPHIgG';
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 8080;
 
 console.log("🔍 Using hardcoded Salesforce credentials...");
 console.log("Username:", SALESFORCE_USERNAME);
