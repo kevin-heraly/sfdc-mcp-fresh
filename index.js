@@ -1,20 +1,32 @@
 const express = require('express');
 const jsforce = require('jsforce');
+const bodyParser = require('body-parser');
 
-// 🔐 Securely loaded from Railway environment variables
+const app = express();
+app.use(bodyParser.json());
+
+// Salesforce credentials from environment variables
 const SALESFORCE_USERNAME = process.env.SALESFORCE_USERNAME;
 const SALESFORCE_PASSWORD = process.env.SALESFORCE_PASSWORD;
 const SALESFORCE_SECURITY_TOKEN = process.env.SALESFORCE_SECURITY_TOKEN;
-
 const PORT = process.env.PORT || 8080;
 
-const app = express();
-let server; // for graceful shutdown
+// Initialize Salesforce connection
+const conn = new jsforce.Connection();
 
-// 🌍 Global CORS for MCP compatibility
+// Authenticate with Salesforce
+conn.login(SALESFORCE_USERNAME, SALESFORCE_PASSWORD + SALESFORCE_SECURITY_TOKEN, (err) => {
+  if (err) {
+    console.error('Salesforce login failed:', err);
+    process.exit(1);
+  }
+  console.log('Connected to Salesforce');
+});
+
+// CORS middleware
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
@@ -22,71 +34,130 @@ app.use((req, res, next) => {
   next();
 });
 
-// 🧠 Salesforce connection
-const conn = new jsforce.Connection();
-
-// 🔐 Authenticate with Salesforce before starting the server
-conn.login(
-  SALESFORCE_USERNAME,
-  SALESFORCE_PASSWORD + SALESFORCE_SECURITY_TOKEN,
-  (err) => {
-    if (err) {
-      console.error('❌ Salesforce login failed:', err);
-      process.exit(1);
-    }
-    console.log('✅ Connected to Salesforce');
-    startServer();
-  }
-);
-
-// 📡 Root metadata endpoint for MCP handshake
+// Root metadata endpoint
 app.get('/', (req, res) => {
-  res.status(200).json({
+  res.json({
     name: "Salesforce MCP",
     description: "Custom connector to pull Salesforce data via MCP",
     version: "1.0",
-    endpoints: ["/leads"]
+    endpoints: ["/tools/list", "/call/search", "/call/fetch"]
   });
 });
 
-// 🩺 Health check
+// Health check endpoint
 app.get('/health', (req, res) => {
-  res.status(200).send('Salesforce MCP is healthy');
+  res.send('Salesforce MCP is healthy');
 });
 
-// 📥 /leads endpoint
-app.get('/leads', async (req, res) => {
+// MCP: List available tools
+app.get('/tools/list', (req, res) => {
+  res.json({
+    tools: [
+      {
+        name: "search",
+        description: "Searches for leads using the provided query string.",
+        input_schema: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "Search query." }
+          },
+          required: ["query"]
+        },
+        output_schema: {
+          type: "object",
+          properties: {
+            results: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string", description: "ID of the resource." },
+                  title: { type: "string", description: "Title or headline of the resource." },
+                  text: { type: "string", description: "Text snippet or summary from the resource." },
+                  url: { type: ["string", "null"], description: "URL of the resource." }
+                },
+                required: ["id", "title", "text"]
+              }
+            }
+          },
+          required: ["results"]
+        }
+      },
+      {
+        name: "fetch",
+        description: "Retrieves detailed content for a specific lead identified by the given ID.",
+        input_schema: {
+          type: "object",
+          properties: {
+            id: { type: "string", description: "ID of the resource to fetch." }
+          },
+          required: ["id"]
+        },
+        output_schema: {
+          type: "object",
+          properties: {
+            id: { type: "string", description: "ID of the resource." },
+            title: { type: "string", description: "Title or headline of the fetched resource." },
+            text: { type: "string", description: "Complete textual content of the resource." },
+            url: { type: ["string", "null"], description: "URL of the resource." },
+            metadata: {
+              type: ["object", "null"],
+              additionalProperties: { type: "string" },
+              description: "Optional metadata providing additional context."
+            }
+          },
+          required: ["id", "title", "text"]
+        }
+      }
+    ]
+  });
+});
+
+// MCP: Search leads
+app.post('/call/search', async (req, res) => {
+  const { query } = req.body;
   try {
-    const result = await conn.sobject('Lead')
-      .find({}, { Id: 1, Name: 1, Company: 1, Email: 1 })
+    const leads = await conn.sobject('Lead')
+      .find({ Name: { $like: `%${query}%` } }, { Id: 1, Name: 1, Company: 1, Email: 1 })
       .limit(5)
       .execute();
 
-    res.status(200).json(result);
+    const results = leads.map(lead => ({
+      id: lead.Id,
+      title: lead.Name,
+      text: `Company: ${lead.Company}, Email: ${lead.Email}`,
+      url: null
+    }));
+
+    res.json({ results });
   } catch (err) {
-    console.error("❌ Error fetching leads:", err);
+    console.error("Error fetching leads:", err);
     res.status(500).send(err.toString());
   }
 });
 
-// 🚀 Start Express server AFTER Salesforce connection
-function startServer() {
-  server = app.listen(PORT, () => {
-    console.log(`🚀 MCP server running on http://localhost:${PORT}`);
-  });
-}
-
-// 🔁 Graceful shutdown (for Railway)
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received: closing server...');
-  if (server) server.close(() => {
-    console.log('HTTP server closed.');
-  });
+// MCP: Fetch lead details
+app.post('/call/fetch', async (req, res) => {
+  const { id } = req.body;
+  try {
+    const lead = await conn.sobject('Lead').retrieve(id);
+    res.json({
+      id: lead.Id,
+      title: lead.Name,
+      text: `Company: ${lead.Company}, Email: ${lead.Email}`,
+      url: null,
+      metadata: {
+        status: lead.Status,
+        phone: lead.Phone
+      }
+    });
+  } catch (err) {
+    console.error("Error fetching lead:", err);
+    res.status(500).send(err.toString());
+  }
 });
 
-process.on('SIGINT', () => {
-  console.log('SIGINT received: closing server...');
-  if (server) server.close(() => {
-    console.log('HTTP server closed.');
-  });
+// Start the server
+app.listen(PORT, () => {
+  console.log(`MCP server running on port ${PORT}`);
 });
