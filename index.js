@@ -2,9 +2,10 @@ const express = require('express');
 const jsforce = require('jsforce');
 
 // 🔐 Hardcoded Salesforce credentials for testing only
-const SALESFORCE_USERNAME = 'kevin.heraly@demandscience.com';
-const SALESFORCE_PASSWORD = 'L0v3Chl03#';
-const SALESFORCE_SECURITY_TOKEN = 'g6bCVSLyfHiwRihRJGECPHIgG';
+const SALESFORCE_USERNAME = process.env.SALESFORCE_USERNAME;
+const SALESFORCE_PASSWORD = process.env.SALESFORCE_PASSWORD;
+const SALESFORCE_SECURITY_TOKEN = process.env.SALESFORCE_SECURITY_TOKEN;
+
 
 const PORT = process.env.PORT || 8080;
 
