@@ -4,24 +4,32 @@ const jsforce = require('jsforce');
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 
-// Salesforce credentials from environment variables
-const SALESFORCE_USERNAME = process.env.SALESFORCE_USERNAME;
-const SALESFORCE_PASSWORD = process.env.SALESFORCE_PASSWORD;
-const SALESFORCE_SECURITY_TOKEN = process.env.SALESFORCE_SECURITY_TOKEN;
-const PORT = process.env.PORT || 8080;
+// Read from Railway env vars
+const {
+  SALESFORCE_USERNAME,
+  SALESFORCE_PASSWORD,
+  SALESFORCE_SECURITY_TOKEN,
+  SALESFORCE_LOGIN_URL = 'https://login.salesforce.com',
+  PORT = 8080,
+} = process.env;
 
-const conn = new jsforce.Connection();
+// Validate env vars
+if (!SALESFORCE_USERNAME || !SALESFORCE_PASSWORD || !SALESFORCE_SECURITY_TOKEN) {
+  console.error('❌ Missing required Salesforce environment variables');
+  process.exit(1);
+}
 
-// Authenticate with Salesforce
+// Connect to Salesforce
+const conn = new jsforce.Connection({ loginUrl: SALESFORCE_LOGIN_URL });
 conn.login(SALESFORCE_USERNAME, SALESFORCE_PASSWORD + SALESFORCE_SECURITY_TOKEN, (err) => {
   if (err) {
-    console.error('Salesforce login failed:', err);
+    console.error('❌ Salesforce login failed:', err.message);
     process.exit(1);
   }
   console.log('✅ Connected to Salesforce');
 });
 
-// CORS
+// CORS (for debugging / flexibility)
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -30,12 +38,12 @@ app.use((req, res, next) => {
   next();
 });
 
-// Suppress favicon 404s
+// Favicon
 app.get('/favicon.ico', (_, res) => res.sendStatus(204));
 
-// ✅ POST / now returns metadata just like GET / — required for AIP validation
-app.post('/', (req, res) => {
-  console.log("📨 Received POST / from ChatGPT validation");
+// ChatGPT validation compatibility — POST /
+app.post('/', (_, res) => {
+  console.log('📨 POST / (ChatGPT validation)');
   res.status(200).json({
     name: "Salesforce MCP",
     description: "Custom connector to pull Salesforce data via MCP",
@@ -45,9 +53,9 @@ app.post('/', (req, res) => {
   });
 });
 
-// Root metadata endpoint
-app.get('/', (req, res) => {
-  console.log("📥 GET /");
+// Root metadata
+app.get('/', (_, res) => {
+  console.log('📥 GET /');
   res.json({
     name: "Salesforce MCP",
     description: "Custom connector to pull Salesforce data via MCP",
@@ -57,11 +65,8 @@ app.get('/', (req, res) => {
   });
 });
 
-// Health
-app.get('/health', (_, res) => res.send('Salesforce MCP is healthy'));
-
-// MCP: Tool list
-app.get('/tools/list', (req, res) => {
+// Tool schema
+app.get('/tools/list', (_, res) => {
   console.log("📥 GET /tools/list");
   res.json({
     tools: [
@@ -124,7 +129,7 @@ app.get('/tools/list', (req, res) => {
   });
 });
 
-// MCP: Search
+// Search endpoint
 app.post('/call/search', async (req, res) => {
   const { query } = req.body;
   console.log("🔍 POST /call/search", query);
@@ -143,16 +148,16 @@ app.post('/call/search', async (req, res) => {
 
     res.json({ results });
   } catch (err) {
-    console.error("❌ /call/search error:", err);
-    res.status(500).json({ error: err.toString() });
+    console.error("❌ /call/search error:", err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
-// MCP: Fetch
+// Fetch endpoint
 app.post('/call/fetch', async (req, res) => {
   const { id } = req.body;
   console.log("📄 POST /call/fetch", id);
-  if (!id) return res.status(400).json({ error: "Missing 'id' in request body" });
+  if (!id) return res.status(400).json({ error: "Missing 'id'" });
 
   try {
     const lead = await conn.sobject('Lead').retrieve(id);
@@ -169,14 +174,14 @@ app.post('/call/fetch', async (req, res) => {
       }
     });
   } catch (err) {
-    console.error("❌ /call/fetch error:", err);
-    res.status(500).json({ error: err.toString() });
+    console.error("❌ /call/fetch error:", err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Global error catcher
-app.use((err, req, res, next) => {
-  console.error("🔥 Unhandled error:", err);
+// Catch-all error
+app.use((err, _, res, __) => {
+  console.error("🔥 Unhandled error:", err.message);
   res.status(500).json({ error: "Unhandled server error" });
 });
 
