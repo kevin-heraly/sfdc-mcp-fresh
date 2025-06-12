@@ -12,9 +12,21 @@ console.log("🔍 Using hardcoded Salesforce credentials...");
 console.log("Username:", SALESFORCE_USERNAME);
 
 const app = express();
+
+// 🌍 Global CORS support for ChatGPT MCP requests
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 const conn = new jsforce.Connection();
 
-// Authenticate with Salesforce
+// 🔐 Authenticate with Salesforce
 conn.login(
   SALESFORCE_USERNAME,
   SALESFORCE_PASSWORD + SALESFORCE_SECURITY_TOKEN,
@@ -28,12 +40,8 @@ conn.login(
   }
 );
 
-// 🔗 Root metadata endpoint for MCP connector handshake
+// 📡 Metadata endpoint for OpenAI MCP handshake
 app.get('/', (req, res) => {
-  res.set({
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*'
-  });
   res.status(200).json({
     name: "Salesforce MCP",
     description: "Custom connector to pull Salesforce data via MCP",
@@ -42,12 +50,12 @@ app.get('/', (req, res) => {
   });
 });
 
-// ✅ Health check
+// 🩺 Health check
 app.get('/health', (req, res) => {
   res.status(200).send('Salesforce MCP is healthy');
 });
 
-// 🎯 Sample endpoint: fetch 5 recent leads
+// 📥 /leads endpoint to return 5 recent Salesforce leads
 app.get('/leads', async (req, res) => {
   try {
     const result = await conn.sobject('Lead')
@@ -55,7 +63,6 @@ app.get('/leads', async (req, res) => {
       .limit(5)
       .execute();
 
-    res.set('Access-Control-Allow-Origin', '*');
     res.status(200).json(result);
   } catch (err) {
     console.error("❌ Error fetching leads:", err);
@@ -63,7 +70,7 @@ app.get('/leads', async (req, res) => {
   }
 });
 
-// 🔊 Start Express server
+// 🚀 Start Express server
 function startServer() {
   app.listen(PORT, () => {
     console.log(`🚀 MCP server running on http://localhost:${PORT}`);
