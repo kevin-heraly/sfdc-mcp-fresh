@@ -1,23 +1,17 @@
 const express = require('express');
 const jsforce = require('jsforce');
 
-// 🔐 Hardcoded Salesforce credentials for testing only
+// 🔐 Securely loaded from Railway environment variables
 const SALESFORCE_USERNAME = process.env.SALESFORCE_USERNAME;
 const SALESFORCE_PASSWORD = process.env.SALESFORCE_PASSWORD;
 const SALESFORCE_SECURITY_TOKEN = process.env.SALESFORCE_SECURITY_TOKEN;
 
-
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
-
-console.log("🔍 Using hardcoded Salesforce credentials...");
-console.log("Username:", SALESFORCE_USERNAME);
 
 const app = express();
+let server; // for graceful shutdown
 
-// 🌍 Global CORS support for ChatGPT MCP requests
+// 🌍 Global CORS for MCP compatibility
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -28,9 +22,10 @@ app.use((req, res, next) => {
   next();
 });
 
+// 🧠 Salesforce connection
 const conn = new jsforce.Connection();
 
-// 🔐 Authenticate with Salesforce
+// 🔐 Authenticate with Salesforce before starting the server
 conn.login(
   SALESFORCE_USERNAME,
   SALESFORCE_PASSWORD + SALESFORCE_SECURITY_TOKEN,
@@ -44,7 +39,7 @@ conn.login(
   }
 );
 
-// 📡 Metadata endpoint for OpenAI MCP handshake
+// 📡 Root metadata endpoint for MCP handshake
 app.get('/', (req, res) => {
   res.status(200).json({
     name: "Salesforce MCP",
@@ -59,7 +54,7 @@ app.get('/health', (req, res) => {
   res.status(200).send('Salesforce MCP is healthy');
 });
 
-// 📥 /leads endpoint to return 5 recent Salesforce leads
+// 📥 /leads endpoint
 app.get('/leads', async (req, res) => {
   try {
     const result = await conn.sobject('Lead')
@@ -74,9 +69,24 @@ app.get('/leads', async (req, res) => {
   }
 });
 
-// 🚀 Start Express server
+// 🚀 Start Express server AFTER Salesforce connection
 function startServer() {
-  app.listen(PORT, () => {
+  server = app.listen(PORT, () => {
     console.log(`🚀 MCP server running on http://localhost:${PORT}`);
   });
 }
+
+// 🔁 Graceful shutdown (for Railway)
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received: closing server...');
+  if (server) server.close(() => {
+    console.log('HTTP server closed.');
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT received: closing server...');
+  if (server) server.close(() => {
+    console.log('HTTP server closed.');
+  });
+});
