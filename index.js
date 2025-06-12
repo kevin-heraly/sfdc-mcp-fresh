@@ -34,6 +34,14 @@ app.use((req, res, next) => {
   next();
 });
 
+// Favicon suppressor to silence 404s
+app.get('/favicon.ico', (req, res) => res.sendStatus(204));
+
+// Handle invalid POST to /
+app.post('/', (req, res) => {
+  res.status(405).json({ error: "POST not supported at root endpoint" });
+});
+
 // Root metadata endpoint
 app.get('/', (req, res) => {
   res.json({
