@@ -10,7 +10,6 @@ const SALESFORCE_PASSWORD = process.env.SALESFORCE_PASSWORD;
 const SALESFORCE_SECURITY_TOKEN = process.env.SALESFORCE_SECURITY_TOKEN;
 const PORT = process.env.PORT || 8080;
 
-// Initialize Salesforce connection
 const conn = new jsforce.Connection();
 
 // Authenticate with Salesforce
@@ -22,7 +21,7 @@ conn.login(SALESFORCE_USERNAME, SALESFORCE_PASSWORD + SALESFORCE_SECURITY_TOKEN,
   console.log('✅ Connected to Salesforce');
 });
 
-// CORS middleware
+// CORS
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -31,17 +30,18 @@ app.use((req, res, next) => {
   next();
 });
 
-// Favicon suppressor
+// Suppress favicon 404s
 app.get('/favicon.ico', (_, res) => res.sendStatus(204));
 
-// Handle invalid POST to /
-app.post('/', (_, res) => {
-  res.status(405).json({ error: "POST not supported at root endpoint" });
+// ✅ Allow POST to `/` to pass ChatGPT validation
+app.post('/', (req, res) => {
+  console.log("📨 Received POST / from ChatGPT validation");
+  res.status(200).json({ message: "POST / allowed for compatibility" });
 });
 
-// ✅ Root metadata endpoint with logging
+// Root metadata endpoint
 app.get('/', (req, res) => {
-  console.log("📥 GET / called with headers:", req.headers);
+  console.log("📥 GET /");
   res.json({
     name: "Salesforce MCP",
     description: "Custom connector to pull Salesforce data via MCP",
@@ -51,84 +51,77 @@ app.get('/', (req, res) => {
   });
 });
 
-// Health check
-app.get('/health', (_, res) => {
-  res.send('Salesforce MCP is healthy');
-});
+// Health
+app.get('/health', (_, res) => res.send('Salesforce MCP is healthy'));
 
-// MCP: Tool listing
+// MCP: Tool list
 app.get('/tools/list', (req, res) => {
-  console.log("📥 GET /tools/list called");
-  try {
-    res.json({
-      tools: [
-        {
-          name: "search",
-          description: "Searches for leads using the provided query string.",
-          input_schema: {
-            type: "object",
-            properties: {
-              query: { type: "string", description: "Search query." }
-            },
-            required: ["query"]
+  console.log("📥 GET /tools/list");
+  res.json({
+    tools: [
+      {
+        name: "search",
+        description: "Searches for leads using the provided query string.",
+        input_schema: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "Search query." }
           },
-          output_schema: {
-            type: "object",
-            properties: {
-              results: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    id: { type: "string" },
-                    title: { type: "string" },
-                    text: { type: "string" },
-                    url: { type: ["string", "null"] }
-                  },
-                  required: ["id", "title", "text"]
-                }
-              }
-            },
-            required: ["results"]
-          }
+          required: ["query"]
         },
-        {
-          name: "fetch",
-          description: "Retrieves detailed content for a specific lead identified by the given ID.",
-          input_schema: {
-            type: "object",
-            properties: {
-              id: { type: "string" }
-            },
-            required: ["id"]
-          },
-          output_schema: {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              title: { type: "string" },
-              text: { type: "string" },
-              url: { type: ["string", "null"] },
-              metadata: {
-                type: ["object", "null"],
-                additionalProperties: { type: "string" }
+        output_schema: {
+          type: "object",
+          properties: {
+            results: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  title: { type: "string" },
+                  text: { type: "string" },
+                  url: { type: ["string", "null"] }
+                },
+                required: ["id", "title", "text"]
               }
-            },
-            required: ["id", "title", "text"]
-          }
+            }
+          },
+          required: ["results"]
         }
-      ]
-    });
-  } catch (err) {
-    console.error("❌ Error in /tools/list:", err);
-    res.status(500).json({ error: err.toString() });
-  }
+      },
+      {
+        name: "fetch",
+        description: "Retrieves detailed content for a specific lead identified by the given ID.",
+        input_schema: {
+          type: "object",
+          properties: {
+            id: { type: "string" }
+          },
+          required: ["id"]
+        },
+        output_schema: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            title: { type: "string" },
+            text: { type: "string" },
+            url: { type: ["string", "null"] },
+            metadata: {
+              type: ["object", "null"],
+              additionalProperties: { type: "string" }
+            }
+          },
+          required: ["id", "title", "text"]
+        }
+      }
+    ]
+  });
 });
 
-// MCP: Search leads
+// MCP: Search
 app.post('/call/search', async (req, res) => {
   const { query } = req.body;
-  console.log("🔍 POST /call/search:", req.body);
+  console.log("🔍 POST /call/search", query);
   try {
     const leads = await conn.sobject('Lead')
       .find({ Name: { $like: `%${query}%` } }, { Id: 1, Name: 1, Company: 1, Email: 1 })
@@ -144,18 +137,16 @@ app.post('/call/search', async (req, res) => {
 
     res.json({ results });
   } catch (err) {
-    console.error("❌ Error in /call/search:", err);
+    console.error("❌ /call/search error:", err);
     res.status(500).json({ error: err.toString() });
   }
 });
 
-// MCP: Fetch lead details
+// MCP: Fetch
 app.post('/call/fetch', async (req, res) => {
   const { id } = req.body;
-  console.log("📄 POST /call/fetch:", req.body);
-  if (!id) {
-    return res.status(400).json({ error: "Missing 'id' in request body" });
-  }
+  console.log("📄 POST /call/fetch", id);
+  if (!id) return res.status(400).json({ error: "Missing 'id' in request body" });
 
   try {
     const lead = await conn.sobject('Lead').retrieve(id);
@@ -172,18 +163,17 @@ app.post('/call/fetch', async (req, res) => {
       }
     });
   } catch (err) {
-    console.error("❌ Error in /call/fetch:", err);
+    console.error("❌ /call/fetch error:", err);
     res.status(500).json({ error: err.toString() });
   }
 });
 
-// Global error handler
+// Global error catcher
 app.use((err, req, res, next) => {
-  console.error("💥 Unhandled error:", err);
-  res.status(500).json({ error: "Internal Server Error" });
+  console.error("🔥 Unhandled error:", err);
+  res.status(500).json({ error: "Unhandled server error" });
 });
 
-// Start server
 app.listen(PORT, () => {
   console.log(`🚀 MCP server running on port ${PORT}`);
 });
