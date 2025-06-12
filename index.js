@@ -139,21 +139,27 @@ app.post('/call/search', async (req, res) => {
 // MCP: Fetch lead details
 app.post('/call/fetch', async (req, res) => {
   const { id } = req.body;
+  if (!id) {
+    return res.status(400).json({ error: "Missing 'id' in request body" });
+  }
+
   try {
     const lead = await conn.sobject('Lead').retrieve(id);
     res.json({
       id: lead.Id,
       title: lead.Name,
-      text: `Company: ${lead.Company}, Email: ${lead.Email}`,
+      text: `Lead: ${lead.Name}, Company: ${lead.Company}, Email: ${lead.Email}`,
       url: null,
       metadata: {
-        status: lead.Status,
-        phone: lead.Phone
+        Company: lead.Company || '',
+        Email: lead.Email || '',
+        Status: lead.Status || '',
+        Phone: lead.Phone || ''
       }
     });
   } catch (err) {
-    console.error("Error fetching lead:", err);
-    res.status(500).send(err.toString());
+    console.error("Error in /call/fetch:", err);
+    res.status(500).json({ error: err.toString() });
   }
 });
 
