@@ -42,12 +42,15 @@ app.post('/', (req, res) => {
   res.status(405).json({ error: "POST not supported at root endpoint" });
 });
 
-// Root metadata endpoint
+// ✅ Root metadata endpoint with required `auth: none`
 app.get('/', (req, res) => {
   res.json({
     name: "Salesforce MCP",
     description: "Custom connector to pull Salesforce data via MCP",
     version: "1.0",
+    auth: {
+      type: "none"
+    },
     endpoints: ["/tools/list", "/call/search", "/call/fetch"]
   });
 });
