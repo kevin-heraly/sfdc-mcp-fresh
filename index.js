@@ -8,6 +8,9 @@ const SALESFORCE_SECURITY_TOKEN = process.env.SALESFORCE_SECURITY_TOKEN;
 
 
 const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});
 
 console.log("🔍 Using hardcoded Salesforce credentials...");
 console.log("Username:", SALESFORCE_USERNAME);
