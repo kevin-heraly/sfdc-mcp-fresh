@@ -33,10 +33,16 @@ app.use((req, res, next) => {
 // Suppress favicon 404s
 app.get('/favicon.ico', (_, res) => res.sendStatus(204));
 
-// ✅ Allow POST to `/` to pass ChatGPT validation
+// ✅ POST / now returns metadata just like GET / — required for AIP validation
 app.post('/', (req, res) => {
   console.log("📨 Received POST / from ChatGPT validation");
-  res.status(200).json({ message: "POST / allowed for compatibility" });
+  res.status(200).json({
+    name: "Salesforce MCP",
+    description: "Custom connector to pull Salesforce data via MCP",
+    version: "1.0",
+    auth: { type: "none" },
+    endpoints: ["/tools/list", "/call/search", "/call/fetch"]
+  });
 });
 
 // Root metadata endpoint
